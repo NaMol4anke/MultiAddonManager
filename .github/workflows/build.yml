@@ -1,5 +1,6 @@
 name: NEVA SteamRT3 release
 on:
+  workflow_dispatch:
   push:
     tags: ['v*-neva.*']
 permissions:

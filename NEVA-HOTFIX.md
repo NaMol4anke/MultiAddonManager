@@ -10,11 +10,11 @@ Both changes are required: the signature fix alone does not fix network-message 
 
 ## Install through NEVA Egg
 
-Use `NaMol4anke/MultiAddonManager` release `v1.7.3-neva.1`, asset
-`MultiAddonManager-v1.7.3-neva.1-steamrt3.tar.gz`. Extract into `game/csgo`.
+Use `NaMol4anke/MultiAddonManager` release `v1.7.3-neva.2`, asset
+`MultiAddonManager-v1.7.3-neva.2-steamrt3.tar.gz`. Extract into `game/csgo`.
 
 Change the Egg MAM updater repository to `NaMol4anke/MultiAddonManager` and set
-`MAM_RELEASE_TAG=v1.7.3-neva.1` in the SMS provisioning environment.
+`MAM_RELEASE_TAG=v1.7.3-neva.2` in the SMS provisioning environment.
 Managed SMS startup sets `RELEASE_FREEZE=1`. Keep `INSTALL_MULTIADDONMANAGER=1`
 for SponsorBoards; SMS supplies the Workshop IDs through `MAM_EXTRA_ADDONS`.
 
