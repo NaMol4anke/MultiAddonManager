@@ -1,118 +1,75 @@
-name: CI
-
+name: NEVA SteamRT3 release
 on:
   push:
-    tags:
-      - '*'
-    branches:
-      - '*'
-    paths-ignore:
-    - LICENSE
-    - README.md
-  pull_request:
-    paths-ignore:
-    - LICENSE
-    - README.md
-
+    tags: ['v*-neva.*']
+permissions:
+  contents: read
 jobs:
   build:
-    name: ${{ matrix.name }} Build
-    runs-on: ${{ matrix.os }}
-    container: ${{ matrix.container }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            name: Windows
-          - os: ubuntu-latest
-            name: SteamRT3
-            container: ghcr.io/source2ze/build-containers:steamrt3
-          - os: ubuntu-latest
-            name: SteamRT4
-            container: ghcr.io/source2ze/build-containers:steamrt4
+    runs-on: ubuntu-latest
+    container: ghcr.io/source2ze/build-containers:steamrt3
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           path: MultiAddonManager
           submodules: recursive
           fetch-depth: 0
-
-      - name: Checkout Metamod
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           repository: alliedmodders/metamod-source
           ref: master
           path: mmsource-2.0
           submodules: recursive
-
-      - name: Checkout HL2SDK
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           repository: alliedmodders/s2sdk
-          ref: cs2
+          ref: 81020d1a26b9d4321b9f030c96929ec18e8c0cff
           path: hl2sdk-cs2
-
-      - name: Checkout AMBuild
-        if: matrix.os == 'windows-latest'
-        uses: actions/checkout@v7
-        with:
-          repository: alliedmodders/ambuild
-          path: ambuild
-
-      - name: Install AMBuild
-        if: matrix.os == 'windows-latest'
-        run: pip install setuptools && cd ambuild && python setup.py install && cd ..
-
-      - name: Build
+      - name: Verify fixes and build
         working-directory: MultiAddonManager
         shell: bash
         run: |
-          mkdir build && cd build
+          set -euo pipefail
+          test "$(git -C ../hl2sdk-cs2 rev-parse HEAD)" = 81020d1a26b9d4321b9f030c96929ec18e8c0cff
+          grep -Fq '55 41 B8 ? ? ? ? B9 ? ? ? ? 48 89 E5 41 57' src/multiaddonmanager.cpp
+          mkdir build
+          cd build
           python ../configure.py --enable-optimize --sdks cs2
           ambuild
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v7
+          test -s package/addons/metamod/multiaddonmanager.vdf
+          test -s package/addons/multiaddonmanager/bin/multiaddonmanager.so
+          readelf -h package/addons/multiaddonmanager/bin/multiaddonmanager.so
+          readelf -d package/addons/multiaddonmanager/bin/multiaddonmanager.so
+          test -z "$(find package -type l -print -quit)"
+          cp ../NEVA-HOTFIX.md package/NEVA-HOTFIX.md
+          printf 'Source commit: %s\nSDK commit: %s\nMetamod source commit: %s\n' "$GITHUB_SHA" 81020d1a26b9d4321b9f030c96929ec18e8c0cff "$(git -C ../../mmsource-2.0 rev-parse HEAD)" > package/BUILD-PROVENANCE.txt
+      - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.name }}
-          path: MultiAddonManager/build/package
-
+          name: SteamRT3
+          path: MultiAddonManager/build/package/
+          if-no-files-found: error
   release:
-    name: Release
-    if: startsWith(github.ref, 'refs/tags/')
     needs: build
     runs-on: ubuntu-latest
-
+    permissions:
+      contents: write
     steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v8
-
-      - name: Package
-        run: |
-          version=`echo $GITHUB_REF | sed "s/refs\/tags\///"`
-          ls -Rall
-          if [ -d "./SteamRT3/" ]; then
-            cd ./SteamRT3/
-            tar -czf ../${{ github.event.repository.name }}-${version}-steamrt3.tar.gz *
-            cd -
-          fi
-          if [ -d "./SteamRT4/" ]; then
-            cd ./SteamRT4/
-            tar -czf ../${{ github.event.repository.name }}-${version}-steamrt4.tar.gz *
-            cd -
-          fi
-          if [ -d "./Windows/" ]; then
-            cd ./Windows/
-            zip -r ../${{ github.event.repository.name }}-${version}-windows.zip *
-            cd -
-          fi
-
-      - name: Release
-        uses: svenstaro/upload-release-action@v2
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v4
         with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: ${{ github.event.repository.name }}-*
-          tag: ${{ github.ref }}
-          file_glob: true
+          name: SteamRT3
+          path: package
+      - name: Package and verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          asset="MultiAddonManager-${GITHUB_REF_NAME}-steamrt3.tar.gz"
+          tar -czf "$asset" -C package .
+          tar -tzf "$asset" > archive-contents.txt
+          grep -Fxq './addons/metamod/multiaddonmanager.vdf' archive-contents.txt
+          grep -Fxq './addons/multiaddonmanager/bin/multiaddonmanager.so' archive-contents.txt
+          sha256sum "$asset" > SHA256SUMS.txt
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" MultiAddonManager-*-steamrt3.tar.gz SHA256SUMS.txt --verify-tag --title "MultiAddonManager $GITHUB_REF_NAME — CS2 1.41.9.7 hotfix (SteamRT3)" --notes-file NEVA-HOTFIX.md --latest
